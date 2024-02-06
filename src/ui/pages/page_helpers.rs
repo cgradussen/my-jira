@@ -1,19 +1,13 @@
 pub fn get_column_string(text: &str, width: usize) -> String {
     let text_width = text.len();
 
-    if text_width == width {
-        return text.to_string();
-    }
-
-    if text_width < width {
-        return format!("{:width$}", text, width = width).to_string();
-    }
-    //text.truncate_ellipse(w - 3).to_string(),
     match width {
         0 => "".to_string(),
         1 => ".".to_string(),
         2 => "..".to_string(),
         3 => "...".to_string(),
+        _ if width == text_width => text.to_string(),
+        _ if width > text_width => format!("{:width$}", text, width = width).to_string(),
         _ => format!("{:.<width$}", &text[0..width - 3], width = width).to_string(),
     }
 }

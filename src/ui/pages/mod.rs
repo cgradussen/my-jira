@@ -2,18 +2,25 @@
 /// Notes:
 /// Refactor: duplicate code in handle inputs.
 /// Refactor: tests for screen output, they don't generate error when not doing anything.
-use std::any::Any;
-use std::rc::Rc;
+mod page_helpers;
 
+use crate::db::JiraDatabase;
+use crate::io_utils::{DFT, GREEN, RED};
+use crate::models::Action;
 use anyhow::anyhow;
 use anyhow::Result;
 use itertools::Itertools;
-
-use crate::db::JiraDatabase;
-use crate::models::Action;
-
-mod page_helpers;
 use page_helpers::get_column_string;
+use std::any::Any;
+use std::rc::Rc;
+
+const HEADER_COLOR: &str = GREEN;
+const QUERY_COLOR: &str = RED;
+
+const TERMINAL_WIDTH: usize = 100;
+const ID_WIDTH: usize = 8;
+const NAME_WIDTH: usize = 20;
+const STATUS_WIDTH: usize = 12;
 
 pub trait Page {
     fn draw_page(&self) -> Result<()>;
@@ -25,10 +32,40 @@ pub struct HomePage {
     pub db: Rc<JiraDatabase>,
 }
 
+fn print_query(text: &str) -> Result<()> {
+    let text = text.to_string();
+
+    let before: String = format!("[{QUERY_COLOR}");
+    let after = format!("{DFT}]");
+
+    let text = text.replace('[', &before);
+    let text = text.replace(']', &after);
+
+    println!("{text}");
+
+    Ok(())
+}
+
 impl Page for HomePage {
     fn draw_page(&self) -> Result<()> {
-        println!("----------------------------- EPICS -----------------------------");
-        println!("     id     |               name               |      status      ");
+        let name_width: usize = TERMINAL_WIDTH - ID_WIDTH - STATUS_WIDTH - 3;
+
+        println!(
+            "{}{:-^width$}",
+            HEADER_COLOR,
+            " EPICS ",
+            width = TERMINAL_WIDTH
+        );
+        println!(
+            "{: ^id_width$}|{: ^name_width$}| {: ^status_width$}{dft}",
+            "id",
+            "name",
+            "status",
+            id_width = ID_WIDTH,
+            name_width = name_width,
+            status_width = STATUS_WIDTH,
+            dft = DFT
+        );
 
         // print out epics using get_column_string(). also make sure the epics are sorted by id
         let db_state = self.db.database.read_db()?;
@@ -36,51 +73,40 @@ impl Page for HomePage {
 
         for (&id, epic) in epics_iter {
             println!(
-                "{}|{}|{}",
-                format!("{:<12}", id),
-                get_column_string(&epic.name, 34),
-                get_column_string(format!("{}", epic.status).as_str(), 17),
+                "{:<id_width$}{HEADER_COLOR}|{DFT}{}{HEADER_COLOR}|{DFT} {}",
+                id,
+                get_column_string(&epic.name, name_width),
+                get_column_string(format!("{}", epic.status).as_str(), STATUS_WIDTH),
+                id_width = ID_WIDTH,
             );
         }
 
         println!();
         println!();
 
-        println!("[q] quit | [c] create epic | [:id:] navigate to epic");
-
-        Ok(())
+        print_query("[q] quit | [c] create epic | [:id:] navigate to epic")
     }
 
     fn handle_input(&self, input: &str) -> Result<Option<Action>> {
         // match against the user input and return the corresponding action. If the user input was invalid return None.
-        if input.len() == 0 {
-            return Ok(None);
+        match input {
+            "" => Ok(None),
+            "q" => Ok(Some(Action::Exit)),
+            "c" => Ok(Some(Action::CreateEpic)),
+            _ => {
+                if input.parse::<u32>().is_err() {
+                    return Ok(None);
+                }
+
+                let epic_id = input.parse::<u32>()?;
+                let db_state = self.db.database.read_db()?;
+
+                if db_state.epics.get(&epic_id).is_none() {
+                    return Ok(None);
+                }
+                Ok(Some(Action::NavigateToEpicDetail { epic_id }))
+            }
         }
-
-        if input == "q" {
-            return Ok(Some(Action::Exit));
-        }
-
-        if input == "c" {
-            return Ok(Some(Action::CreateEpic));
-        }
-
-        if input == "p" {
-            return Ok(Some(Action::NavigateToPreviousPage));
-        }
-
-        if input.parse::<u32>().is_err() {
-            return Ok(None);
-        }
-
-        let epic_id = input.parse::<u32>()?;
-        let db_state = self.db.database.read_db()?;
-
-        if db_state.epics.get(&epic_id) == None {
-            return Ok(None);
-        }
-
-        return Ok(Some(Action::NavigateToEpicDetail { epic_id }));
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -95,85 +121,110 @@ pub struct EpicDetail {
 
 impl Page for EpicDetail {
     fn draw_page(&self) -> Result<()> {
+        let name_width: usize = TERMINAL_WIDTH - ID_WIDTH - STATUS_WIDTH - 3;
+        let description_width = TERMINAL_WIDTH - ID_WIDTH - STATUS_WIDTH - NAME_WIDTH - 4;
+
         let db_state = self.db.read_db()?;
         let epic = db_state
             .epics
             .get(&self.epic_id)
             .ok_or_else(|| anyhow!("could not find epic!"))?;
 
-        println!("------------------------------ EPIC ------------------------------");
-        println!("  id  |     name     |         description         |    status    ");
+        println!(
+            "{}{:-^width$}",
+            HEADER_COLOR,
+            " EPIC ",
+            width = TERMINAL_WIDTH,
+        );
+        println!(
+            "{: ^id_width$}|{: ^name_width$}|{: ^description_width$}| {: ^status_width$}{dft}",
+            "id",
+            "name",
+            "description",
+            "status",
+            id_width = ID_WIDTH,
+            name_width = NAME_WIDTH,
+            description_width = description_width,
+            status_width = STATUS_WIDTH,
+            dft = DFT
+        );
 
         // print out epic details using get_column_string()
         println!(
-            "{}|{}|{}|{}",
-            format!("{:<6}", &self.epic_id),
-            get_column_string(&epic.name, 14),
-            get_column_string(&epic.description, 29),
-            get_column_string(format!("{}", epic.status).as_str(), 14),
+            "{:<id_width$}{HEADER_COLOR}|{DFT}{}{HEADER_COLOR}|{DFT}{}{HEADER_COLOR}|{DFT} {}",
+            &self.epic_id,
+            get_column_string(&epic.name, NAME_WIDTH),
+            get_column_string(&epic.description, description_width),
+            get_column_string(format!("{}", epic.status).as_str(), STATUS_WIDTH),
+            id_width = ID_WIDTH
         );
 
         println!();
 
-        println!("---------------------------- STORIES ----------------------------");
-        println!("     id     |               name               |      status      ");
+        println!(
+            "{}{:-^width$}",
+            HEADER_COLOR,
+            " STORIES ",
+            width = TERMINAL_WIDTH
+        );
+        println!(
+            "{: ^id_width$}|{: ^name_width$}|{: ^status_width$} {dft}",
+            "id",
+            "name",
+            "status",
+            id_width = ID_WIDTH,
+            name_width = name_width,
+            status_width = STATUS_WIDTH,
+            dft = DFT
+        );
 
         let stories = &db_state.stories;
         // print out stories using get_column_string(). also make sure the stories are sorted by id
         let stories_iter = stories.iter().sorted_by_key(|x| x.0);
         for (&id, story) in stories_iter {
-            println!(
-                "{}|{}|{}",
-                format!("{:<12}", id),
-                get_column_string(&story.name, 34),
-                get_column_string(format!("{}", story.status).as_str(), 17),
-            );
+            // filter out the items for the given epic
+            if epic.stories.contains(&id) {
+                println!(
+                    "{:<id_width$}{HEADER_COLOR}|{DFT}{}{HEADER_COLOR}|{DFT} {}",
+                    id,
+                    get_column_string(&story.name, name_width),
+                    get_column_string(format!("{}", story.status).as_str(), STATUS_WIDTH),
+                    id_width = ID_WIDTH,
+                );
+            }
         }
 
         println!();
         println!();
 
-        println!("[p] previous | [u] update epic | [d] delete epic | [c] create story | [:id:] navigate to story");
-
-        Ok(())
+        print_query("[p] previous | [u] update epic | [d] delete epic | [c] create story | [:id:] navigate to story")
     }
 
     fn handle_input(&self, input: &str) -> Result<Option<Action>> {
         // match against the user input and return the corresponding action. If the user input was invalid return None.
         let epic_id = self.epic_id;
 
-        if input.len() == 0 {
-            return Ok(None);
+        match input {
+            "" => Ok(None),
+            "p" => Ok(Some(Action::NavigateToPreviousPage)),
+            "u" => Ok(Some(Action::UpdateEpicStatus { epic_id })),
+            "d" => Ok(Some(Action::DeleteEpic { epic_id })),
+            "c" => Ok(Some(Action::CreateStory { epic_id })),
+            _ => {
+                if input.parse::<u32>().is_err() {
+                    return Ok(None);
+                }
+
+                let story_id = input.parse::<u32>()?;
+                let db_state = self.db.database.read_db()?;
+
+                if db_state.stories.get(&story_id).is_none() {
+                    return Ok(None);
+                }
+
+                Ok(Some(Action::NavigateToStoryDetail { epic_id, story_id }))
+            }
         }
-
-        if input == "p" {
-            return Ok(Some(Action::NavigateToPreviousPage));
-        }
-
-        if input == "u" {
-            return Ok(Some(Action::UpdateEpicStatus { epic_id }));
-        }
-
-        if input == "d" {
-            return Ok(Some(Action::DeleteEpic { epic_id }));
-        }
-
-        if input == "c" {
-            return Ok(Some(Action::CreateStory { epic_id }));
-        }
-
-        if input.parse::<u32>().is_err() {
-            return Ok(None);
-        }
-
-        let story_id = input.parse::<u32>()?;
-        let db_state = self.db.database.read_db()?;
-
-        if db_state.stories.get(&story_id) == None {
-            return Ok(None);
-        }
-
-        return Ok(Some(Action::NavigateToStoryDetail { epic_id, story_id }));
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -189,30 +240,46 @@ pub struct StoryDetail {
 
 impl Page for StoryDetail {
     fn draw_page(&self) -> Result<()> {
+        let description_width = TERMINAL_WIDTH - ID_WIDTH - STATUS_WIDTH - NAME_WIDTH - 4;
         let db_state = self.db.read_db()?;
         let story = db_state
             .stories
             .get(&self.story_id)
             .ok_or_else(|| anyhow!("could not find story!"))?;
 
-        println!("------------------------------ STORY ------------------------------");
-        println!("  id  |     name     |         description         |    status    ");
+        println!(
+            "{}{:-^width$}",
+            HEADER_COLOR,
+            " STORY ",
+            width = TERMINAL_WIDTH
+        );
+        println!(
+            "{: ^id_width$}|{: ^name_width$}|{: ^description_width$}| {: ^status_width$}{dft}",
+            "id",
+            "name",
+            "description",
+            "status",
+            id_width = ID_WIDTH,
+            name_width = NAME_WIDTH,
+            description_width = description_width,
+            status_width = STATUS_WIDTH,
+            dft = DFT
+        );
 
         // print out story details using get_column_string()
         println!(
-            "{}|{}|{}|{}",
-            format!("{:<6}", &self.story_id),
-            get_column_string(&story.name, 14),
-            get_column_string(&story.description, 29),
-            get_column_string(format!("{}", story.status).as_str(), 14),
+            "{:<id_width$}{HEADER_COLOR}|{DFT}{}{HEADER_COLOR}|{DFT}{}{HEADER_COLOR}|{DFT} {}",
+            &self.story_id,
+            get_column_string(&story.name, NAME_WIDTH),
+            get_column_string(&story.description, description_width),
+            get_column_string(format!("{}", story.status).as_str(), STATUS_WIDTH),
+            id_width = ID_WIDTH,
         );
 
         println!();
         println!();
 
-        println!("[p] previous | [u] update story | [d] delete story");
-
-        Ok(())
+        print_query("[p] previous | [u] update story | [d] delete story")
     }
 
     fn handle_input(&self, input: &str) -> Result<Option<Action>> {
@@ -220,23 +287,13 @@ impl Page for StoryDetail {
         let epic_id = self.epic_id;
         let story_id = self.story_id;
 
-        if input.len() == 0 {
-            return Ok(None);
+        match input {
+            "" => Ok(None),
+            "p" => Ok(Some(Action::NavigateToPreviousPage)),
+            "u" => Ok(Some(Action::UpdateStoryStatus { story_id })),
+            "d" => Ok(Some(Action::DeleteStory { epic_id, story_id })),
+            _ => Ok(None),
         }
-
-        if input == "p" {
-            return Ok(Some(Action::NavigateToPreviousPage));
-        }
-
-        if input == "u" {
-            return Ok(Some(Action::UpdateStoryStatus { story_id }));
-        }
-
-        if input == "d" {
-            return Ok(Some(Action::DeleteStory { epic_id, story_id }));
-        }
-
-        return Ok(None);
     }
 
     fn as_any(&self) -> &dyn Any {

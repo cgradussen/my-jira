@@ -1,4 +1,3 @@
-/// TODO: NOTE 1: Use with_context() and the anyhow! macro form the anyhow crate inside handle_action() for error handling.
 ///
 ///
 use anyhow::{anyhow, Context, Ok, Result}; // ,
@@ -25,10 +24,11 @@ impl Navigator {
         Self {
             pages,
             prompts: Prompts::new(),
-            db: db,
+            db,
         }
     }
 
+    #[allow(clippy::borrowed_box)]
     pub fn get_current_page(&self) -> Option<&Box<dyn Page>> {
         // this should always return the last element in the pages vector
         self.pages.last()

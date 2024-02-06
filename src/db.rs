@@ -19,16 +19,13 @@ impl JiraDatabase {
 
     pub fn read_db(&self) -> Result<DBState> {
         let db = &self.database;
-        let db2 = db.as_ref();
-        let db3 = db2.read_db();
-
-        db3
+        db.as_ref().read_db()
     }
 
     pub fn create_epic(&self, epic: Epic) -> Result<u32> {
         let mut db_state = self.read_db()?;
         let last_item_id = &mut db_state.last_item_id;
-        *last_item_id = *last_item_id + 1;
+        *last_item_id += 1;
         let last_item_id = *last_item_id;
         db_state.epics.insert(last_item_id, epic);
 
@@ -46,7 +43,7 @@ impl JiraDatabase {
             None => Err(anyhow!("Epic not found!")),
             Some(epic) => {
                 // determine next id
-                *last_item_id = *last_item_id + 1;
+                *last_item_id += 1;
                 let last_item_id = *last_item_id;
 
                 // add story reference to epic
@@ -71,10 +68,9 @@ impl JiraDatabase {
 
         // remove all related stories
         for story_id in &epic.stories {
-            let _story = db_state
-                .stories
-                .remove(&story_id)
-                .ok_or(anyhow!("Story not found!"))?;
+            let _story = db_state.stories.remove(story_id);
+            // BUGFIX: if story is not found, that doesn't matter, should be deleted anyway
+            //.ok_or(anyhow!("Story not found!"))?;
         }
 
         // remove epic

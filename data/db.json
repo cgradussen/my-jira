@@ -1,5 +1,39 @@
 {
-  "last_item_id": 3,
-  "epics": {},
-  "stories": {}
+  "last_item_id": 6,
+  "epics": {
+    "6": {
+      "name": "Bugfixes",
+      "description": "Bugfix wrong stories shown with given epic",
+      "status": "InProgress",
+      "stories": [
+        5
+      ]
+    },
+    "1": {
+      "name": "Mock keyboard input",
+      "description": "Mock the keyboard input",
+      "status": "Open",
+      "stories": [
+        2
+      ]
+    },
+    "3": {
+      "name": "Improve comments",
+      "description": "Improve comments",
+      "status": "Open",
+      "stories": []
+    }
+  },
+  "stories": {
+    "2": {
+      "name": "Keyboard function dynamic",
+      "description": "Make keyboard function dynamic",
+      "status": "Open"
+    },
+    "5": {
+      "name": "Wrong stories",
+      "description": "Wrong stories shown with given epic",
+      "status": "Resolved"
+    }
+  }
 }
